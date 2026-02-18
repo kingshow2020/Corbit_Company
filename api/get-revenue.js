@@ -5,6 +5,8 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+const MONTHLY_EXPENSES = 1080000;
+
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
@@ -23,13 +25,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const data = await redis.get('corbitt_data') || {};
-    const revenueMonths = (data.revenue) ? data.revenue : {};
-    const expenseMonths = (data.expenses) ? data.expenses : {};
+    const data = await redis.get('corbitt_revenue');
+    const months = (data && data.months) ? data.months : {};
 
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth();
+    const month = now.getMonth(); // 0-indexed (Feb = 1)
     const day = now.getDate();
     const hours = now.getHours();
     const minutes = now.getMinutes();
@@ -39,44 +40,60 @@ module.exports = async function handler(req, res) {
     const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
     const secondsInMonth = ((day - 1) * 86400) + secondsToday;
 
-    const currentMonthKey = year + '-' + String(month + 1).padStart(2, '0');
-
-    // === Revenue ===
-    const currentMonthRevenue = revenueMonths[currentMonthKey] || 0;
-    const revPerSecond = currentMonthRevenue / (daysInMonth * 86400);
-    const revenueToday = revPerSecond * secondsToday;
-    const revenueMonth = revPerSecond * secondsInMonth;
-
-    let revenueYear = 0;
-    for (const [key, amount] of Object.entries(revenueMonths)) {
-      const parts = key.split('-');
-      const y = parseInt(parts[0]);
-      const m = parseInt(parts[1]) - 1;
-      if (y === year) {
-        if (m < month) {
-          revenueYear += amount;
-        } else if (m === month) {
-          revenueYear += revenueMonth;
-        }
-      }
-    }
-
-    // === Expenses (same logic - from Redis, not fixed) ===
-    const currentMonthExpenses = expenseMonths[currentMonthKey] || 0;
-    const expPerSecond = currentMonthExpenses / (daysInMonth * 86400);
+    // === EXPENSES (auto - 1,080,000/month) ===
+    const expPerSecond = MONTHLY_EXPENSES / (daysInMonth * 86400);
     const expensesToday = expPerSecond * secondsToday;
     const expensesMonth = expPerSecond * secondsInMonth;
 
     let expensesYear = 0;
-    for (const [key, amount] of Object.entries(expenseMonths)) {
+    for (let m = 0; m < month; m++) {
+      expensesYear += MONTHLY_EXPENSES;
+    }
+    expensesYear += expensesMonth;
+
+    // === REVENUE (last month's data displayed as current month) ===
+    // Employee enters January → Dashboard shows it as February (current)
+    const lastMonth = month === 0 ? 11 : month - 1;
+    const lastMonthYear = month === 0 ? year - 1 : year;
+    const lastMonthKey = lastMonthYear + '-' + String(lastMonth + 1).padStart(2, '0');
+
+    const lastMonthRevenue = months[lastMonthKey] || 0;
+
+    // Distribute last month's revenue across current month's seconds
+    const revPerSecond = lastMonthRevenue / (daysInMonth * 86400);
+    const revenueToday = revPerSecond * secondsToday;
+    const revenueMonth = revPerSecond * secondsInMonth;
+
+    // Year to date: all months before lastMonth (full) + current displayed month
+    let revenueYear = 0;
+    for (const [key, amount] of Object.entries(months)) {
       const parts = key.split('-');
       const y = parseInt(parts[0]);
-      const m = parseInt(parts[1]) - 1;
-      if (y === year) {
-        if (m < month) {
-          expensesYear += amount;
-        } else if (m === month) {
-          expensesYear += expensesMonth;
+      const m = parseInt(parts[1]) - 1; // 0-indexed
+
+      if (y === year && m < lastMonth) {
+        // Months before the one being displayed = full amount
+        revenueYear += amount;
+      } else if (y === lastMonthYear && m === lastMonth) {
+        // The month being displayed = distributed as current
+        revenueYear += revenueMonth;
+      }
+      // Handle previous year months if lastMonth is January
+      if (y < year) {
+        // Don't double count - already handled above
+      }
+    }
+
+    // If last month is in previous year (e.g., Dec 2025 displayed in Jan 2026)
+    // Add all months from previous year except December
+    if (month === 0) {
+      revenueYear = revenueMonth; // Only current displayed month for new year
+      for (const [key, amount] of Object.entries(months)) {
+        const parts = key.split('-');
+        const y = parseInt(parts[0]);
+        const m = parseInt(parts[1]) - 1;
+        if (y === year && m < month) {
+          revenueYear += amount;
         }
       }
     }
@@ -98,9 +115,8 @@ module.exports = async function handler(req, res) {
       revenueYear: revenueYear,
       revPerSecond: revPerSecond,
 
-      // Raw data for admin
-      revenue: revenueMonths,
-      expenses: expenseMonths
+      // For admin page
+      months: months
     });
   } catch (error) {
     console.error('Redis error:', error);

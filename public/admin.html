@@ -10,17 +10,8 @@
 <body>
     <main class="form-page">
         <div class="form-container">
-            <h1 class="admin-title" data-ar="لوحة الإدارة" data-en="Admin Panel"></h1>
-
-            <!-- Tab Switcher -->
-            <div class="admin-tabs">
-                <button class="admin-tab active" id="tabRevenue" onclick="switchTab('revenue')">
-                    <span data-ar="الإيرادات" data-en="Revenue"></span>
-                </button>
-                <button class="admin-tab" id="tabExpenses" onclick="switchTab('expenses')">
-                    <span data-ar="المصروفات" data-en="Expenses"></span>
-                </button>
-            </div>
+            <h1 class="admin-title" data-ar="إدخال الإيرادات" data-en="Revenue Entry"></h1>
+            <p class="admin-note" data-ar="أدخل إيرادات الشهر الماضي وستظهر في الداشبورد كالشهر الحالي" data-en="Enter last month's revenue — it will display as the current month"></p>
 
             <!-- Month Selector -->
             <div class="admin-section">
@@ -39,7 +30,7 @@
 
             <!-- History -->
             <div class="admin-section">
-                <h2 class="section-label" id="historyLabel" data-ar="سجل الإيرادات" data-en="Revenue History"></h2>
+                <h2 class="section-label" data-ar="سجل الإيرادات" data-en="Revenue History"></h2>
                 <div class="months-list" id="monthsList"></div>
             </div>
 
@@ -58,9 +49,7 @@
         var now = new Date();
         var currentYear = now.getFullYear();
         var selectedMonthKey = '';
-        var activeTab = 'revenue'; // 'revenue' or 'expenses'
-        var allRevenue = {};
-        var allExpenses = {};
+        var allMonths = {};
 
         function getMonthLabel(key) {
             var parts = key.split('-');
@@ -74,46 +63,18 @@
             return year + '-' + String(month + 1).padStart(2, '0');
         }
 
-        function getActiveData() {
-            return activeTab === 'revenue' ? allRevenue : allExpenses;
-        }
-
-        function switchTab(tab) {
-            activeTab = tab;
-            document.getElementById('tabRevenue').classList.toggle('active', tab === 'revenue');
-            document.getElementById('tabExpenses').classList.toggle('active', tab === 'expenses');
-
-            var lang = getLang();
-            var label = document.getElementById('historyLabel');
-            if (tab === 'revenue') {
-                label.setAttribute('data-ar', 'سجل الإيرادات');
-                label.setAttribute('data-en', 'Revenue History');
-                label.textContent = lang === 'ar' ? 'سجل الإيرادات' : 'Revenue History';
-            } else {
-                label.setAttribute('data-ar', 'سجل المصروفات');
-                label.setAttribute('data-en', 'Expenses History');
-                label.textContent = lang === 'ar' ? 'سجل المصروفات' : 'Expenses History';
-            }
-
-            selectedMonthKey = '';
-            document.getElementById('amountInput').value = '';
-            buildMonthSelector();
-            renderHistory();
-        }
-
         function buildMonthSelector() {
             var container = document.getElementById('monthSelector');
-            var data = getActiveData();
             var html = '';
             for (var m = 0; m < 12; m++) {
                 var key = buildMonthKey(currentYear, m);
                 var lang = getLang();
                 var label = monthNames[lang][m];
-                var hasData = data[key] && data[key] > 0;
+                var hasData = allMonths[key] && allMonths[key] > 0;
                 var isSelected = key === selectedMonthKey;
                 html += '<button class="month-chip' +
                     (isSelected ? ' selected' : '') +
-                    (hasData ? (activeTab === 'revenue' ? ' has-data' : ' has-data-exp') : '') +
+                    (hasData ? ' has-data' : '') +
                     '" onclick="selectMonth(\'' + key + '\')">' +
                     label +
                     (hasData ? ' ✓' : '') +
@@ -129,10 +90,9 @@
 
         function selectMonth(key) {
             selectedMonthKey = key;
-            var data = getActiveData();
             var input = document.getElementById('amountInput');
-            if (data[key] && data[key] > 0) {
-                input.value = data[key];
+            if (allMonths[key] && allMonths[key] > 0) {
+                input.value = allMonths[key];
             } else {
                 input.value = '';
             }
@@ -158,23 +118,21 @@
             if (isNaN(amount) || amount < 0) return;
 
             var lang = getLang();
-            var typeName = activeTab === 'revenue'
-                ? (lang === 'ar' ? 'إيرادات ' : 'Revenue for ')
-                : (lang === 'ar' ? 'مصروفات ' : 'Expenses for ');
-            var msg = typeName + getMonthLabel(selectedMonthKey) + '\n' + formatNumber(amount) + (lang === 'ar' ? ' ريال' : ' SAR');
+            var msg = (lang === 'ar' ? 'تأكيد إيرادات ' : 'Confirm revenue for ') +
+                getMonthLabel(selectedMonthKey) + '\n' +
+                formatNumber(amount) + (lang === 'ar' ? ' ريال' : ' SAR');
 
             if (!confirm(msg)) return;
 
             fetch(API_BASE + '/api/set-revenue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: activeTab, monthKey: selectedMonthKey, amount: amount })
+                body: JSON.stringify({ monthKey: selectedMonthKey, amount: amount })
             })
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.success) {
-                    allRevenue = data.revenue || {};
-                    allExpenses = data.expenses || {};
+                    allMonths = data.months || {};
                     buildMonthSelector();
                     renderHistory();
                     showStatus(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully', false);
@@ -190,8 +148,7 @@
 
         function renderHistory() {
             var container = document.getElementById('monthsList');
-            var data = getActiveData();
-            var keys = Object.keys(data).sort().reverse();
+            var keys = Object.keys(allMonths).sort().reverse();
 
             if (keys.length === 0) {
                 var lang = getLang();
@@ -202,7 +159,7 @@
 
             var total = 0;
             var html = keys.map(function(key) {
-                var amount = data[key];
+                var amount = allMonths[key];
                 total += amount;
                 return '<div class="history-row" onclick="selectMonth(\'' + key + '\')">' +
                     '<span class="history-month">' + getMonthLabel(key) + '</span>' +
@@ -210,8 +167,7 @@
                 '</div>';
             }).join('');
 
-            var isExp = activeTab === 'expenses';
-            html = '<div class="history-total' + (isExp ? ' history-total-exp' : '') + '">' +
+            html = '<div class="history-total">' +
                 '<span>' + (getLang() === 'ar' ? 'الإجمالي' : 'Total') + '</span>' +
                 '<span>' + formatNumber(total) + ' SAR</span>' +
             '</div>' + html;
@@ -235,8 +191,7 @@
         fetch(API_BASE + '/api/get-revenue')
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                allRevenue = data.revenue || {};
-                allExpenses = data.expenses || {};
+                allMonths = data.months || {};
                 buildMonthSelector();
                 renderHistory();
             })
