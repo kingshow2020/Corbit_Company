@@ -37,42 +37,34 @@ module.exports = async function handler(req, res) {
     const seconds = now.getSeconds();
 
     const daysInMonth = getDaysInMonth(year, month);
+    const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
+    const secondsInMonth = ((day - 1) * 86400) + secondsToday;
 
     // === Expenses (1,080,000 SAR/month) ===
-
-    // Seconds elapsed today
-    const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
-
-    // Expenses per second this month
     const expPerSecond = MONTHLY_EXPENSES / (daysInMonth * 86400);
-
-    // Today's expenses so far
     const expensesToday = expPerSecond * secondsToday;
+    const expensesMonth = expPerSecond * secondsInMonth;
 
-    // Month to date: (full days passed) + today's partial
-    const secondsMonth = ((day - 1) * 86400) + secondsToday;
-    const expensesMonth = expPerSecond * secondsMonth;
-
-    // Year to date: all past months (full) + current month partial
     let expensesYear = 0;
     for (let m = 0; m < month; m++) {
-      expensesYear += MONTHLY_EXPENSES; // each past month = full 1,080,000
+      expensesYear += MONTHLY_EXPENSES;
     }
     expensesYear += expensesMonth;
 
-    // === Revenue ===
-
+    // === Revenue (same logic - distributed per second like expenses) ===
     const currentMonthKey = year + '-' + String(month + 1).padStart(2, '0');
     const currentMonthRevenue = months[currentMonthKey] || 0;
-    const dailyRevenue = currentMonthRevenue / daysInMonth;
 
-    // Today
-    const revenueToday = dailyRevenue;
+    // Revenue per second for current month
+    const revPerSecond = currentMonthRevenue / (daysInMonth * 86400);
+
+    // Today's revenue (ticks per second like expenses)
+    const revenueToday = revPerSecond * secondsToday;
 
     // Month to date
-    const revenueMonth = dailyRevenue * day;
+    const revenueMonth = revPerSecond * secondsInMonth;
 
-    // Year to date
+    // Year to date: past months full + current month partial
     let revenueYear = 0;
     for (const [key, amount] of Object.entries(months)) {
       const parts = key.split('-');
@@ -80,31 +72,31 @@ module.exports = async function handler(req, res) {
       const m = parseInt(parts[1]) - 1;
       if (y === year) {
         if (m < month) {
-          revenueYear += amount; // past months: full
+          revenueYear += amount; // past months: full amount
         } else if (m === month) {
-          revenueYear += dailyRevenue * day; // current month: partial
+          revenueYear += revenueMonth; // current month: distributed
         }
       }
     }
 
     return res.status(200).json({
-      // Server time
       serverTime: now.toISOString(),
       year: year,
       month: month + 1,
       day: day,
       daysInMonth: daysInMonth,
 
-      // Expenses (snapshot + rate for local animation)
+      // Expenses
       expensesToday: expensesToday,
       expensesMonth: expensesMonth,
       expensesYear: expensesYear,
       expPerSecond: expPerSecond,
 
-      // Revenue
+      // Revenue (now also ticks per second)
       revenueToday: revenueToday,
       revenueMonth: revenueMonth,
       revenueYear: revenueYear,
+      revPerSecond: revPerSecond,
 
       // Raw data for admin
       months: months

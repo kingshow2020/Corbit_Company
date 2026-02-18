@@ -72,24 +72,29 @@ function updateDashboard() {
 
     // Seconds elapsed since snapshot
     var elapsed = (Date.now() - snapshotTime) / 1000;
-    var tick = snapshot.expPerSecond * elapsed;
+    var expTick = snapshot.expPerSecond * elapsed;
+    var revTick = (snapshot.revPerSecond || 0) * elapsed;
 
     // Expenses: snapshot + local tick
-    var expToday = snapshot.expensesToday + tick;
-    var expMonth = snapshot.expensesMonth + tick;
-    var expYear = snapshot.expensesYear + tick;
+    var expToday = snapshot.expensesToday + expTick;
+    var expMonth = snapshot.expensesMonth + expTick;
+    var expYear = snapshot.expensesYear + expTick;
 
     expTodayEl.textContent = formatNumber(expToday);
     document.getElementById('expensesMonth').textContent = formatNumber(expMonth);
     document.getElementById('expensesYear').textContent = formatNumber(expYear);
 
-    // Revenue: static from server
-    document.getElementById('revenueToday').textContent = formatNumber(snapshot.revenueToday);
-    document.getElementById('revenueMonth').textContent = formatNumber(snapshot.revenueMonth);
-    document.getElementById('revenueYear').textContent = formatNumber(snapshot.revenueYear);
+    // Revenue: snapshot + local tick (moves per second like expenses)
+    var revToday = snapshot.revenueToday + revTick;
+    var revMonth = snapshot.revenueMonth + revTick;
+    var revYear = snapshot.revenueYear + revTick;
+
+    document.getElementById('revenueToday').textContent = formatNumber(revToday);
+    document.getElementById('revenueMonth').textContent = formatNumber(revMonth);
+    document.getElementById('revenueYear').textContent = formatNumber(revYear);
 
     // Net result
-    var net = snapshot.revenueYear - expYear;
+    var net = revYear - expYear;
     var sign = net >= 0 ? '+' : '';
     var netResultEl = document.getElementById('netResult');
     var netResultCard = document.getElementById('netResultCard');
