@@ -28,13 +28,15 @@ module.exports = async function handler(req, res) {
     const data = await redis.get('corbitt_revenue');
     const months = (data && data.months) ? data.months : {};
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth(); // 0-indexed (Feb = 1)
-    const day = now.getDate();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    const seconds = now.getSeconds();
+    // Saudi Arabia timezone (UTC+3)
+    const utcNow = new Date();
+    const now = new Date(utcNow.getTime() + (3 * 60 * 60 * 1000));
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth(); // 0-indexed (Feb = 1)
+    const day = now.getUTCDate();
+    const hours = now.getUTCHours();
+    const minutes = now.getUTCMinutes();
+    const seconds = now.getUTCSeconds();
 
     const daysInMonth = getDaysInMonth(year, month);
     const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
