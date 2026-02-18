@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark" data-lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Tajawal:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <main class="form-page">
+        <div class="form-container">
+            <h1 class="admin-title" data-ar="إدخال الإيرادات" data-en="Revenue Entry"></h1>
+
+            <!-- Current Month Revenue Entry -->
+            <div class="admin-section">
+                <h2 class="section-label" data-ar="إيرادات الشهر الماضي" data-en="Last Month's Revenue"></h2>
+                <p class="section-date" id="lastMonthLabel"></p>
+                <div id="lastMonthView">
+                    <div class="input-row" id="lastMonthInputRow">
+                        <input type="number" id="lastMonthAmount" placeholder="المبلغ" step="0.01" min="0">
+                        <button class="btn btn-primary btn-sm" onclick="confirmRevenue()">
+                            <span data-ar="تأكيد" data-en="Confirm"></span>
+                        </button>
+                    </div>
+                    <div class="locked-display hidden" id="lastMonthLocked">
+                        <div class="locked-amount" id="lastMonthLockedValue"></div>
+                        <button class="btn btn-edit" onclick="unlockField()">
+                            <span data-ar="تعديل" data-en="Edit"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="admin-divider"></div>
+
+            <!-- All Months History -->
+            <div class="admin-section">
+                <h2 class="section-label" data-ar="سجل الإيرادات" data-en="Revenue History"></h2>
+                <div class="months-list" id="monthsList"></div>
+            </div>
+
+            <!-- Status -->
+            <div class="admin-status hidden" id="statusMsg"></div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+        var lastMonthDate = new Date();
+        lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+        var lastMonthKey = lastMonthDate.getFullYear() + '-' + String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+
+        var monthNames = {
+            ar: ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'],
+            en: ['January','February','March','April','May','June','July','August','September','October','November','December']
+        };
+
+        function getMonthLabel(key) {
+            var parts = key.split('-');
+            var y = parseInt(parts[0]);
+            var m = parseInt(parts[1]) - 1;
+            var lang = getLang();
+            return monthNames[lang][m] + ' ' + y;
+        }
+
+        // Set last month label
+        function updateLabels() {
+            var lang = getLang();
+            document.getElementById('lastMonthLabel').textContent = getMonthLabel(lastMonthKey);
+        }
+        updateLabels();
+
+        var isLocked = false;
+        var allMonths = {};
+
+        // Load data from server
+        function loadData() {
+            fetch(API_BASE + '/api/get-revenue')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    allMonths = data.months || {};
+                    var existing = allMonths[lastMonthKey];
+                    if (existing && existing > 0) {
+                        lockField(existing);
+                    }
+                    renderHistory();
+                })
+                .catch(function(err) {
+                    showStatus('خطأ في تحميل البيانات', true);
+                    console.error(err);
+                });
+        }
+
+        function confirmRevenue() {
+            var input = document.getElementById('lastMonthAmount');
+            var amount = parseFloat(input.value);
+            if (isNaN(amount) || amount <= 0) return;
+
+            var lang = getLang();
+            var msg = lang === 'ar'
+                ? 'متأكد من هذا الرقم؟\n' + formatNumber(amount) + ' ريال'
+                : 'Are you sure?\n' + formatNumber(amount) + ' SAR';
+
+            if (!confirm(msg)) return;
+
+            // Send to server
+            fetch(API_BASE + '/api/set-revenue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ monthKey: lastMonthKey, amount: amount })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    allMonths = data.months || {};
+                    lockField(amount);
+                    renderHistory();
+                    showStatus(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully', false);
+                } else {
+                    showStatus(lang === 'ar' ? 'خطأ في الحفظ' : 'Save error', true);
+                }
+            })
+            .catch(function(err) {
+                showStatus(lang === 'ar' ? 'خطأ في الاتصال' : 'Connection error', true);
+                console.error(err);
+            });
+        }
+
+        function lockField(amount) {
+            isLocked = true;
+            document.getElementById('lastMonthInputRow').classList.add('hidden');
+            var lockedEl = document.getElementById('lastMonthLocked');
+            lockedEl.classList.remove('hidden');
+            document.getElementById('lastMonthLockedValue').textContent = formatNumber(amount) + ' SAR';
+        }
+
+        function unlockField() {
+            isLocked = false;
+            document.getElementById('lastMonthInputRow').classList.remove('hidden');
+            document.getElementById('lastMonthLocked').classList.add('hidden');
+            var existing = allMonths[lastMonthKey];
+            if (existing) {
+                document.getElementById('lastMonthAmount').value = existing;
+            }
+        }
+
+        function renderHistory() {
+            var container = document.getElementById('monthsList');
+            var keys = Object.keys(allMonths).sort().reverse();
+
+            if (keys.length === 0) {
+                var lang = getLang();
+                container.innerHTML = '<p class="empty-msg" data-ar="لا توجد بيانات" data-en="No data">' +
+                    (lang === 'ar' ? 'لا توجد بيانات' : 'No data') + '</p>';
+                return;
+            }
+
+            container.innerHTML = keys.map(function(key) {
+                var amount = allMonths[key];
+                var isCurrent = key === lastMonthKey;
+                return '<div class="history-row' + (isCurrent ? ' current' : '') + '">' +
+                    '<span class="history-month">' + getMonthLabel(key) + '</span>' +
+                    '<span class="history-amount">' + formatNumber(amount) + ' SAR</span>' +
+                '</div>';
+            }).join('');
+        }
+
+        function showStatus(msg, isError) {
+            var el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'admin-status ' + (isError ? 'status-error' : 'status-success');
+            el.classList.remove('hidden');
+            setTimeout(function() { el.classList.add('hidden'); }, 3000);
+        }
+
+        // Enter key support
+        document.getElementById('lastMonthAmount').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); confirmRevenue(); }
+        });
+
+        loadData();
+    </script>
+</body>
+</html>
