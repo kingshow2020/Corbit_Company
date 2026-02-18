@@ -42,63 +42,41 @@ module.exports = async function handler(req, res) {
     const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
     const secondsInMonth = ((day - 1) * 86400) + secondsToday;
 
+    // The "displayed" month = last month's data shown as current
+    const lastMonth = month === 0 ? 11 : month - 1;
+    const lastMonthYear = month === 0 ? year - 1 : year;
+    const lastMonthKey = lastMonthYear + '-' + String(lastMonth + 1).padStart(2, '0');
+
     // === EXPENSES (auto - 1,080,000/month) ===
     const expPerSecond = MONTHLY_EXPENSES / (daysInMonth * 86400);
     const expensesToday = expPerSecond * secondsToday;
     const expensesMonth = expPerSecond * secondsInMonth;
 
+    // Year: months BEFORE the displayed month (lastMonth) + current distributed
     let expensesYear = 0;
-    for (let m = 0; m < month; m++) {
+    for (let m = 0; m < lastMonth; m++) {
       expensesYear += MONTHLY_EXPENSES;
     }
     expensesYear += expensesMonth;
 
     // === REVENUE (last month's data displayed as current month) ===
-    // Employee enters January → Dashboard shows it as February (current)
-    const lastMonth = month === 0 ? 11 : month - 1;
-    const lastMonthYear = month === 0 ? year - 1 : year;
-    const lastMonthKey = lastMonthYear + '-' + String(lastMonth + 1).padStart(2, '0');
-
     const lastMonthRevenue = months[lastMonthKey] || 0;
-
-    // Distribute last month's revenue across current month's seconds
     const revPerSecond = lastMonthRevenue / (daysInMonth * 86400);
     const revenueToday = revPerSecond * secondsToday;
     const revenueMonth = revPerSecond * secondsInMonth;
 
-    // Year to date: all months before lastMonth (full) + current displayed month
+    // Year: months BEFORE the displayed month + current distributed
     let revenueYear = 0;
     for (const [key, amount] of Object.entries(months)) {
       const parts = key.split('-');
       const y = parseInt(parts[0]);
-      const m = parseInt(parts[1]) - 1; // 0-indexed
-
-      if (y === year && m < lastMonth) {
-        // Months before the one being displayed = full amount
+      const m = parseInt(parts[1]) - 1;
+      // Only count months in same year AND before the displayed month
+      if (y === lastMonthYear && m < lastMonth) {
         revenueYear += amount;
-      } else if (y === lastMonthYear && m === lastMonth) {
-        // The month being displayed = distributed as current
-        revenueYear += revenueMonth;
-      }
-      // Handle previous year months if lastMonth is January
-      if (y < year) {
-        // Don't double count - already handled above
       }
     }
-
-    // If last month is in previous year (e.g., Dec 2025 displayed in Jan 2026)
-    // Add all months from previous year except December
-    if (month === 0) {
-      revenueYear = revenueMonth; // Only current displayed month for new year
-      for (const [key, amount] of Object.entries(months)) {
-        const parts = key.split('-');
-        const y = parseInt(parts[0]);
-        const m = parseInt(parts[1]) - 1;
-        if (y === year && m < month) {
-          revenueYear += amount;
-        }
-      }
-    }
+    revenueYear += revenueMonth;
 
     return res.status(200).json({
       serverTime: now.toISOString(),
