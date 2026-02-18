@@ -126,11 +126,14 @@ function updateClock() {
     var now = new Date();
     var lang = getLang();
 
-    // Time: HH:MM:SS
-    var h = String(now.getHours()).padStart(2, '0');
+    // Time: hh:MM:SS AM/PM
+    var hours24 = now.getHours();
+    var isPM = hours24 >= 12;
+    var h12 = hours24 % 12 || 12;
     var m = String(now.getMinutes()).padStart(2, '0');
     var s = String(now.getSeconds()).padStart(2, '0');
-    timeEl.textContent = h + ':' + m + ':' + s;
+    var period = lang === 'ar' ? (isPM ? 'مساءً' : 'صباحاً') : (isPM ? 'PM' : 'AM');
+    timeEl.textContent = h12 + ':' + m + ':' + s + ' ' + period;
 
     // Date
     var dateEl = document.getElementById('clockDate');

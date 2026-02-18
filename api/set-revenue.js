@@ -19,7 +19,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const { monthKey, amount } = req.body;
+    const { type, monthKey, amount } = req.body;
+
+    // Validate type: "revenue" or "expenses"
+    if (type !== 'revenue' && type !== 'expenses') {
+      return res.status(400).json({ error: 'Invalid type. Use "revenue" or "expenses"' });
+    }
 
     // Validate monthKey format: "YYYY-MM"
     if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) {
@@ -33,20 +38,25 @@ module.exports = async function handler(req, res) {
     }
 
     // Get existing data
-    const data = await redis.get('corbitt_revenue') || { months: {} };
-    if (!data.months) data.months = {};
+    const data = await redis.get('corbitt_data') || {};
+    if (!data.revenue) data.revenue = {};
+    if (!data.expenses) data.expenses = {};
 
-    // Set or update the month
+    // Set or delete
     if (numAmount === 0) {
-      delete data.months[monthKey];
+      delete data[type][monthKey];
     } else {
-      data.months[monthKey] = numAmount;
+      data[type][monthKey] = numAmount;
     }
 
-    // Save back
-    await redis.set('corbitt_revenue', data);
+    // Save
+    await redis.set('corbitt_data', data);
 
-    return res.status(200).json({ success: true, months: data.months });
+    return res.status(200).json({
+      success: true,
+      revenue: data.revenue,
+      expenses: data.expenses
+    });
   } catch (error) {
     console.error('Redis error:', error);
     return res.status(500).json({ error: 'Server error' });
