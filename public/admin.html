@@ -11,17 +11,29 @@
 <body>
     <main class="form-page">
         <div class="form-container">
-            <h1 class="admin-title" data-ar="إدخال الإيرادات" data-en="Revenue Entry"></h1>
-            <p class="admin-note" data-ar="أدخل إيرادات الشهر الماضي وستظهر في الداشبورد كالشهر الحالي" data-en="Enter last month's revenue — it will display as the current month"></p>
+            <h1 class="admin-title" data-ar="إدخال الإيرادات اليومية" data-en="Daily Revenue Entry"></h1>
+            <p class="admin-note" data-ar="أدخل إيرادات اليوم وستظهر في الداشبورد تلقائياً" data-en="Enter today's revenue and it will appear on the dashboard automatically"></p>
 
-            <!-- Month Selector -->
+            <!-- Alert for missing days -->
+            <div class="daily-alert hidden" id="missingAlert">
+                <div class="alert-icon">!</div>
+                <span id="missingText"></span>
+            </div>
+
+            <!-- All complete message -->
+            <div class="daily-complete hidden" id="completeMsg">
+                <span data-ar="كل الأيام مكتملة" data-en="All days are complete"></span>
+            </div>
+
+            <!-- Date display -->
+            <div class="daily-date" id="targetDate"></div>
+
+            <!-- Input -->
             <div class="admin-section">
-                <h2 class="section-label" data-ar="اختر الشهر" data-en="Select Month"></h2>
-                <div class="month-selector" id="monthSelector"></div>
                 <div class="input-row">
                     <input type="number" id="amountInput" placeholder="المبلغ" step="0.01" min="0">
-                    <button class="btn btn-primary btn-sm" onclick="confirmEntry()">
-                        <span data-ar="تأكيد" data-en="Confirm"></span>
+                    <button class="btn btn-primary btn-sm" id="submitBtn" onclick="submitDaily()">
+                        <span data-ar="إضافة" data-en="Add"></span>
                     </button>
                 </div>
             </div>
@@ -31,8 +43,8 @@
 
             <!-- History -->
             <div class="admin-section">
-                <h2 class="section-label" data-ar="سجل الإيرادات" data-en="Revenue History"></h2>
-                <div class="months-list" id="monthsList"></div>
+                <h2 class="section-label" data-ar="سجل آخر 30 يوم" data-en="Last 30 Days"></h2>
+                <div class="months-list" id="daysList"></div>
             </div>
 
             <!-- Status -->
@@ -42,103 +54,193 @@
 
     <script src="app.js"></script>
     <script>
+        var allDays = {};
+        var targetDateKey = ''; // The date we're currently adding for
+
+        var dayNames = {
+            ar: ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
+            en: ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+        };
         var monthNames = {
             ar: ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'],
             en: ['January','February','March','April','May','June','July','August','September','October','November','December']
         };
 
-        var now = new Date();
-        var currentYear = now.getFullYear();
-        var selectedMonthKey = '';
-        var allMonths = {};
+        // Get Saudi time (UTC+3)
+        function getSaudiNow() {
+            var utcNow = new Date();
+            return new Date(utcNow.getTime() + (3 * 60 * 60 * 1000));
+        }
 
-        function getMonthLabel(key) {
+        function dateKeyToDate(key) {
             var parts = key.split('-');
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+
+        function formatDateKey(d) {
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        }
+
+        function getYesterdayKey() {
+            var now = getSaudiNow();
+            var yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+            return yesterday.getUTCFullYear() + '-' +
+                String(yesterday.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                String(yesterday.getUTCDate()).padStart(2, '0');
+        }
+
+        function formatDateLabel(key) {
+            var parts = key.split('-');
+            var d = parseInt(parts[2]);
+            var m = parseInt(parts[1]) - 1;
             var y = parseInt(parts[0]);
+            var lang = getLang();
+            var dt = new Date(y, m, d);
+            var dayName = dayNames[lang][dt.getDay()];
+            return d + ' ' + monthNames[lang][m] + ' ' + y + ' (' + dayName + ')';
+        }
+
+        function formatDateShort(key) {
+            var parts = key.split('-');
+            var d = parseInt(parts[2]);
             var m = parseInt(parts[1]) - 1;
             var lang = getLang();
-            return monthNames[lang][m] + ' ' + y;
+            return d + ' ' + monthNames[lang][m];
         }
 
-        function buildMonthKey(year, month) {
-            return year + '-' + String(month + 1).padStart(2, '0');
-        }
+        // Find the oldest missing day (from yesterday going back, within current month)
+        function findMissingDay() {
+            var now = getSaudiNow();
+            var year = now.getUTCFullYear();
+            var month = now.getUTCMonth();
 
-        function buildMonthSelector() {
-            var container = document.getElementById('monthSelector');
-            var html = '';
-            for (var m = 0; m < 12; m++) {
-                var key = buildMonthKey(currentYear, m);
-                var lang = getLang();
-                var label = monthNames[lang][m];
-                var hasData = allMonths[key] && allMonths[key] > 0;
-                var isSelected = key === selectedMonthKey;
-                html += '<button class="month-chip' +
-                    (isSelected ? ' selected' : '') +
-                    (hasData ? ' has-data' : '') +
-                    '" onclick="selectMonth(\'' + key + '\')">' +
-                    label +
-                    (hasData ? ' \u2713' : '') +
-                    '</button>';
+            // Start from yesterday, go back to 1st of current month
+            var yesterday = new Date(Date.UTC(year, month, now.getUTCDate() - 1));
+            var firstOfMonth = new Date(Date.UTC(year, month, 1));
+
+            // Collect all missing days
+            var missing = [];
+            var check = new Date(yesterday);
+            while (check >= firstOfMonth) {
+                var key = check.getUTCFullYear() + '-' +
+                    String(check.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                    String(check.getUTCDate()).padStart(2, '0');
+                if (!allDays[key] || allDays[key] <= 0) {
+                    missing.push(key);
+                }
+                check.setUTCDate(check.getUTCDate() - 1);
             }
-            container.innerHTML = '<div class="year-label">' + currentYear + '</div>' +
-                '<div class="month-chips">' + html + '</div>' +
-                '<div class="year-nav">' +
-                    '<button class="btn-nav" onclick="changeYear(-1)">\u25C4 ' + (currentYear - 1) + '</button>' +
-                    '<button class="btn-nav" onclick="changeYear(1)">' + (currentYear + 1) + ' \u25BA</button>' +
-                '</div>';
+
+            // Return the oldest missing day (so they fill in chronological order)
+            if (missing.length > 0) {
+                return missing[missing.length - 1];
+            }
+            return null;
         }
 
-        function selectMonth(key) {
-            selectedMonthKey = key;
+        function updateUI() {
+            var lang = getLang();
+            var missingDay = findMissingDay();
+            var alertEl = document.getElementById('missingAlert');
+            var completeEl = document.getElementById('completeMsg');
+            var dateEl = document.getElementById('targetDate');
             var input = document.getElementById('amountInput');
-            if (allMonths[key] && allMonths[key] > 0) {
-                input.value = allMonths[key];
+            var submitBtn = document.getElementById('submitBtn');
+
+            if (missingDay) {
+                // There's a missing day
+                targetDateKey = missingDay;
+                alertEl.classList.remove('hidden');
+                completeEl.classList.add('hidden');
+
+                var missingLabel = formatDateShort(missingDay);
+                document.getElementById('missingText').textContent =
+                    lang === 'ar'
+                        ? 'يوم ' + missingLabel + ' ما أُضيفت بعد!'
+                        : missingLabel + ' not entered yet!';
+
+                dateEl.textContent = formatDateLabel(missingDay);
+
+                submitBtn.querySelector('span').textContent =
+                    lang === 'ar'
+                        ? 'إضافة إيرادات ' + missingLabel
+                        : 'Add revenue for ' + missingLabel;
+
+                // Pre-fill if exists
+                if (allDays[missingDay]) {
+                    input.value = allDays[missingDay];
+                } else {
+                    input.value = '';
+                }
+                input.disabled = false;
+                submitBtn.disabled = false;
             } else {
-                input.value = '';
+                // All days complete — default to yesterday
+                var yesterdayKey = getYesterdayKey();
+                targetDateKey = yesterdayKey;
+                alertEl.classList.add('hidden');
+
+                // Check if yesterday is entered
+                if (allDays[yesterdayKey]) {
+                    completeEl.classList.remove('hidden');
+                    dateEl.textContent = formatDateLabel(yesterdayKey);
+                    input.value = allDays[yesterdayKey];
+                    submitBtn.querySelector('span').textContent =
+                        lang === 'ar' ? 'تعديل' : 'Update';
+                } else {
+                    completeEl.classList.add('hidden');
+                    dateEl.textContent = formatDateLabel(yesterdayKey);
+                    input.value = '';
+                    submitBtn.querySelector('span').textContent =
+                        lang === 'ar'
+                            ? 'إضافة إيرادات ' + formatDateShort(yesterdayKey)
+                            : 'Add revenue for ' + formatDateShort(yesterdayKey);
+                }
+                input.disabled = false;
+                submitBtn.disabled = false;
             }
-            buildMonthSelector();
-            input.focus();
+
+            renderHistory();
+            applyLang(lang);
         }
 
-        function changeYear(delta) {
-            currentYear += delta;
-            selectedMonthKey = '';
-            buildMonthSelector();
-        }
-
-        function confirmEntry() {
-            if (!selectedMonthKey) {
-                var lang = getLang();
-                showStatus(lang === 'ar' ? 'اختر شهر أولاً' : 'Select a month first', true);
-                return;
-            }
+        function submitDaily() {
+            if (!targetDateKey) return;
 
             var input = document.getElementById('amountInput');
             var amount = parseFloat(input.value);
-            if (isNaN(amount) || amount < 0) return;
+            if (isNaN(amount) || amount < 0) {
+                showStatus(getLang() === 'ar' ? 'أدخل مبلغ صحيح' : 'Enter valid amount', true);
+                return;
+            }
 
             var lang = getLang();
-            var msg = (lang === 'ar' ? 'تأكيد إيرادات ' : 'Confirm revenue for ') +
-                getMonthLabel(selectedMonthKey) + '\n' +
-                formatNumber(amount) + (lang === 'ar' ? ' ريال' : ' SAR');
 
-            if (!confirm(msg)) return;
-
-            fetch(API_BASE + '/api/set-revenue', {
+            fetch(API_BASE + '/api/set-daily', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ monthKey: selectedMonthKey, amount: amount })
+                body: JSON.stringify({ date: targetDateKey, amount: amount })
             })
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.success) {
-                    allMonths = data.months || {};
-                    buildMonthSelector();
-                    renderHistory();
-                    showStatus(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully', false);
+                    allDays = data.days || {};
+                    input.value = '';
+                    showStatus(
+                        lang === 'ar'
+                            ? 'تم حفظ إيرادات ' + formatDateShort(data.date)
+                            : 'Saved revenue for ' + formatDateShort(data.date),
+                        false
+                    );
+                    updateUI(); // Re-check for next missing day
                 } else {
-                    showStatus(lang === 'ar' ? 'خطأ في الحفظ' : 'Save error', true);
+                    showStatus(
+                        lang === 'ar' ? 'خطأ: ' + (data.error || 'خطأ في الحفظ')
+                            : 'Error: ' + (data.error || 'Save error'),
+                        true
+                    );
                 }
             })
             .catch(function(err) {
@@ -148,32 +250,79 @@
         }
 
         function renderHistory() {
-            var container = document.getElementById('monthsList');
-            var keys = Object.keys(allMonths).sort().reverse();
+            var container = document.getElementById('daysList');
+            if (!container) return;
 
-            if (keys.length === 0) {
-                var lang = getLang();
+            var lang = getLang();
+            var now = getSaudiNow();
+            var year = now.getUTCFullYear();
+            var month = now.getUTCMonth();
+
+            // Build list of last 30 days (from yesterday back)
+            var days = [];
+            var monthTotal = 0;
+            var currentMonthPrefix = year + '-' + String(month + 1).padStart(2, '0');
+
+            for (var i = 1; i <= 30; i++) {
+                var d = new Date(Date.UTC(year, month, now.getUTCDate() - i));
+                var key = d.getUTCFullYear() + '-' +
+                    String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getUTCDate()).padStart(2, '0');
+                var amount = allDays[key] || 0;
+                var hasData = amount > 0;
+                var isCurrentMonth = key.startsWith(currentMonthPrefix);
+
+                if (isCurrentMonth && hasData) {
+                    monthTotal += amount;
+                }
+
+                days.push({ key: key, amount: amount, hasData: hasData, isCurrentMonth: isCurrentMonth });
+            }
+
+            if (days.length === 0) {
                 container.innerHTML = '<p class="empty-msg">' +
                     (lang === 'ar' ? 'لا توجد بيانات' : 'No data') + '</p>';
                 return;
             }
 
-            var total = 0;
-            var html = keys.map(function(key) {
-                var amount = allMonths[key];
-                total += amount;
-                return '<div class="history-row" onclick="selectMonth(\'' + key + '\')">' +
-                    '<span class="history-month">' + getMonthLabel(key) + '</span>' +
-                    '<span class="history-amount">' + formatNumber(amount) + ' SAR</span>' +
+            // Month total header
+            var html = '<div class="history-total">' +
+                '<span>' + (lang === 'ar' ? 'إجمالي الشهر' : 'Month Total') + '</span>' +
+                '<span>' + formatNumber(monthTotal) + ' SAR</span>' +
+            '</div>';
+
+            html += days.map(function(day) {
+                var statusIcon = day.hasData ? '<span class="day-check">&#10003;</span>' : '<span class="day-miss">&#10007;</span>';
+                var amountText = day.hasData ? formatNumber(day.amount) + ' SAR' : (lang === 'ar' ? '—' : '—');
+                var rowClass = 'history-row' + (day.hasData ? '' : ' missing-row');
+
+                return '<div class="' + rowClass + '" onclick="selectDay(\'' + day.key + '\')">' +
+                    '<span class="history-month">' + statusIcon + ' ' + formatDateShort(day.key) + '</span>' +
+                    '<span class="history-amount">' + amountText + '</span>' +
                 '</div>';
             }).join('');
 
-            html = '<div class="history-total">' +
-                '<span>' + (getLang() === 'ar' ? 'الإجمالي' : 'Total') + '</span>' +
-                '<span>' + formatNumber(total) + ' SAR</span>' +
-            '</div>' + html;
-
             container.innerHTML = html;
+        }
+
+        function selectDay(key) {
+            targetDateKey = key;
+            var input = document.getElementById('amountInput');
+            if (allDays[key] && allDays[key] > 0) {
+                input.value = allDays[key];
+            } else {
+                input.value = '';
+            }
+
+            var lang = getLang();
+            var label = formatDateShort(key);
+            document.getElementById('targetDate').textContent = formatDateLabel(key);
+            document.getElementById('submitBtn').querySelector('span').textContent =
+                lang === 'ar'
+                    ? (allDays[key] ? 'تعديل إيرادات ' : 'إضافة إيرادات ') + label
+                    : (allDays[key] ? 'Update revenue for ' : 'Add revenue for ') + label;
+
+            input.focus();
         }
 
         function showStatus(msg, isError) {
@@ -184,24 +333,23 @@
             setTimeout(function() { el.classList.add('hidden'); }, 3000);
         }
 
+        // Enter key
         document.getElementById('amountInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); confirmEntry(); }
+            if (e.key === 'Enter') { e.preventDefault(); submitDaily(); }
         });
 
         // Load data
         fetch(API_BASE + '/api/get-revenue')
             .then(function(res) { return res.json(); })
             .then(function(data) {
-                allMonths = data.months || {};
-                buildMonthSelector();
-                renderHistory();
+                allDays = data.days || {};
+                updateUI();
             })
             .catch(function(err) {
                 showStatus('خطأ في تحميل البيانات', true);
                 console.error(err);
             });
 
-        buildMonthSelector();
         applyLang(getLang());
     </script>
 </body>
