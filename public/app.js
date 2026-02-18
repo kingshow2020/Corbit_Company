@@ -1,5 +1,5 @@
 // === Constants ===
-const API_BASE = 'https://corbitt-api.vercel.app';
+const API_BASE = '';
 
 // === Utility ===
 
