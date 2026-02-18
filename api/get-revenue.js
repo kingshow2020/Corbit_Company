@@ -43,25 +43,41 @@ module.exports = async function handler(req, res) {
     const secondsInMonth = ((day - 1) * 86400) + secondsToday;
 
     // The "displayed" month = last month's data shown as current
-    const lastMonth = month === 0 ? 11 : month - 1;
-    const lastMonthYear = month === 0 ? year - 1 : year;
-    const lastMonthKey = lastMonthYear + '-' + String(lastMonth + 1).padStart(2, '0');
+    let displayMonth = month === 0 ? 11 : month - 1;
+    let displayYear = month === 0 ? year - 1 : year;
+    let displayKey = displayYear + '-' + String(displayMonth + 1).padStart(2, '0');
+
+    // === GRACE PERIOD: if last month has no data, keep showing the month before ===
+    // This gives the accountant time to enter the new month's data
+    // without the dashboard showing 0
+    if (!months[displayKey] || months[displayKey] <= 0) {
+      const fallbackMonth = displayMonth === 0 ? 11 : displayMonth - 1;
+      const fallbackYear = displayMonth === 0 ? displayYear - 1 : displayYear;
+      const fallbackKey = fallbackYear + '-' + String(fallbackMonth + 1).padStart(2, '0');
+
+      // Only fallback if the previous month actually has data
+      if (months[fallbackKey] && months[fallbackKey] > 0) {
+        displayMonth = fallbackMonth;
+        displayYear = fallbackYear;
+        displayKey = fallbackKey;
+      }
+    }
 
     // === EXPENSES (auto - 1,080,000/month) ===
     const expPerSecond = MONTHLY_EXPENSES / (daysInMonth * 86400);
     const expensesToday = expPerSecond * secondsToday;
     const expensesMonth = expPerSecond * secondsInMonth;
 
-    // Year: months BEFORE the displayed month (lastMonth) + current distributed
+    // Year: months BEFORE the displayed month + current distributed
     let expensesYear = 0;
-    for (let m = 0; m < lastMonth; m++) {
+    for (let m = 0; m < displayMonth; m++) {
       expensesYear += MONTHLY_EXPENSES;
     }
     expensesYear += expensesMonth;
 
-    // === REVENUE (last month's data displayed as current month) ===
-    const lastMonthRevenue = months[lastMonthKey] || 0;
-    const revPerSecond = lastMonthRevenue / (daysInMonth * 86400);
+    // === REVENUE (displayed month's data shown as current) ===
+    const displayRevenue = months[displayKey] || 0;
+    const revPerSecond = displayRevenue / (daysInMonth * 86400);
     const revenueToday = revPerSecond * secondsToday;
     const revenueMonth = revPerSecond * secondsInMonth;
 
@@ -72,7 +88,7 @@ module.exports = async function handler(req, res) {
       const y = parseInt(parts[0]);
       const m = parseInt(parts[1]) - 1;
       // Only count months in same year AND before the displayed month
-      if (y === lastMonthYear && m < lastMonth) {
+      if (y === displayYear && m < displayMonth) {
         revenueYear += amount;
       }
     }
