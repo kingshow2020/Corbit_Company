@@ -203,6 +203,37 @@ body {
     padding: 20px 16px 40px;
 }
 
+/* === Clock Bar === */
+.clock-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 14px;
+}
+
+[data-theme="light"] .clock-bar {
+    box-shadow: var(--shadow-card);
+}
+
+.clock-time {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'IBM Plex Sans', monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    direction: ltr;
+}
+
+.clock-date {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
 /* === Dashboard Grid === */
 .dashboard-grid {
     display: grid;

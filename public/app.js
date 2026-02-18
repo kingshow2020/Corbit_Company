@@ -117,6 +117,34 @@ function updateDashboard() {
     }
 }
 
+// === Clock ===
+
+function updateClock() {
+    var timeEl = document.getElementById('clockTime');
+    if (!timeEl) return;
+
+    var now = new Date();
+    var lang = getLang();
+
+    // Time: HH:MM:SS
+    var h = String(now.getHours()).padStart(2, '0');
+    var m = String(now.getMinutes()).padStart(2, '0');
+    var s = String(now.getSeconds()).padStart(2, '0');
+    timeEl.textContent = h + ':' + m + ':' + s;
+
+    // Date
+    var dateEl = document.getElementById('clockDate');
+    if (lang === 'ar') {
+        dateEl.textContent = now.toLocaleDateString('ar-SA', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+    } else {
+        dateEl.textContent = now.toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+    }
+}
+
 // === Initialize ===
 
 applyTheme(getTheme());
@@ -127,6 +155,11 @@ if (document.getElementById('expensesToday')) {
     fetchSnapshot();
     setInterval(fetchSnapshot, 300000);
 
-    // Animate expenses every second locally
-    setInterval(updateDashboard, 1000);
+    // Animate every second: dashboard + clock
+    updateClock();
+    updateDashboard();
+    setInterval(function() {
+        updateClock();
+        updateDashboard();
+    }, 1000);
 }
