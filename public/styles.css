@@ -509,53 +509,114 @@ body {
 
 .btn-x:hover { background: var(--accent-red-dim); }
 
-/* === Admin - Lock/Confirm Styles === */
+/* === Admin Styles === */
 .hidden { display: none !important; }
 
-.locked-display {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    background: var(--accent-green-dim);
-    border: 1px solid var(--accent-green-glow);
-    border-radius: 12px;
+.admin-divider {
+    height: 1px;
+    background: var(--border-card);
+    margin: 24px 0;
 }
 
-.locked-amount {
-    flex: 1;
-    font-size: 20px;
+/* Month Selector */
+.month-selector {
+    margin-bottom: 16px;
+}
+
+.year-label {
+    text-align: center;
+    font-size: 18px;
     font-weight: 700;
-    color: var(--accent-green);
+    color: var(--text-primary);
+    margin-bottom: 12px;
     font-family: 'IBM Plex Sans', monospace;
-    font-variant-numeric: tabular-nums;
-    direction: ltr;
-    text-align: right;
 }
 
-.btn-edit {
-    padding: 8px 16px;
+.month-chips {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.month-chip {
+    padding: 10px 4px;
     border: 1px solid var(--border-card);
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--bg-stat);
     color: var(--text-secondary);
     font-size: 13px;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s;
+    text-align: center;
 }
 
-.btn-edit:hover {
+.month-chip:hover {
     background: var(--bg-card-hover);
+    border-color: var(--text-muted);
+}
+
+.month-chip.selected {
+    background: var(--primary-glow);
+    border-color: var(--primary);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.month-chip.has-data {
+    background: var(--accent-green-dim);
+    border-color: var(--accent-green-glow);
+    color: var(--accent-green);
+}
+
+.month-chip.has-data.selected {
+    background: var(--primary-glow);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.year-nav {
+    display: flex;
+    justify-content: space-between;
+}
+
+.btn-nav {
+    padding: 6px 14px;
+    border: 1px solid var(--border-card);
+    border-radius: 8px;
+    background: var(--bg-stat);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: 'IBM Plex Sans', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-nav:hover {
     color: var(--text-primary);
     border-color: var(--text-muted);
 }
 
-.admin-divider {
-    height: 1px;
-    background: var(--border-card);
-    margin: 24px 0;
+/* History Total */
+.history-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--accent-green-dim);
+    border: 1px solid var(--accent-green-glow);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+.history-total span:last-child {
+    font-family: 'IBM Plex Sans', monospace;
+    direction: ltr;
 }
 
 .months-list {

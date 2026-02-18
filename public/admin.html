@@ -12,23 +12,15 @@
         <div class="form-container">
             <h1 class="admin-title" data-ar="إدخال الإيرادات" data-en="Revenue Entry"></h1>
 
-            <!-- Current Month Revenue Entry -->
+            <!-- Month Selector + Amount -->
             <div class="admin-section">
-                <h2 class="section-label" data-ar="إيرادات الشهر الماضي" data-en="Last Month's Revenue"></h2>
-                <p class="section-date" id="lastMonthLabel"></p>
-                <div id="lastMonthView">
-                    <div class="input-row" id="lastMonthInputRow">
-                        <input type="number" id="lastMonthAmount" placeholder="المبلغ" step="0.01" min="0">
-                        <button class="btn btn-primary btn-sm" onclick="confirmRevenue()">
-                            <span data-ar="تأكيد" data-en="Confirm"></span>
-                        </button>
-                    </div>
-                    <div class="locked-display hidden" id="lastMonthLocked">
-                        <div class="locked-amount" id="lastMonthLockedValue"></div>
-                        <button class="btn btn-edit" onclick="unlockField()">
-                            <span data-ar="تعديل" data-en="Edit"></span>
-                        </button>
-                    </div>
+                <h2 class="section-label" data-ar="اختر الشهر" data-en="Select Month"></h2>
+                <div class="month-selector" id="monthSelector"></div>
+                <div class="input-row" id="amountInputRow">
+                    <input type="number" id="amountInput" placeholder="المبلغ" step="0.01" min="0">
+                    <button class="btn btn-primary btn-sm" onclick="confirmRevenue()">
+                        <span data-ar="تأكيد" data-en="Confirm"></span>
+                    </button>
                 </div>
             </div>
 
@@ -48,14 +40,15 @@
 
     <script src="app.js"></script>
     <script>
-        var lastMonthDate = new Date();
-        lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
-        var lastMonthKey = lastMonthDate.getFullYear() + '-' + String(lastMonthDate.getMonth() + 1).padStart(2, '0');
-
         var monthNames = {
             ar: ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'],
             en: ['January','February','March','April','May','June','July','August','September','October','November','December']
         };
+
+        var now = new Date();
+        var currentYear = now.getFullYear();
+        var selectedMonthKey = '';
+        var allMonths = {};
 
         function getMonthLabel(key) {
             var parts = key.split('-');
@@ -65,57 +58,84 @@
             return monthNames[lang][m] + ' ' + y;
         }
 
-        // Set last month label
-        function updateLabels() {
-            var lang = getLang();
-            document.getElementById('lastMonthLabel').textContent = getMonthLabel(lastMonthKey);
+        function buildMonthKey(year, month) {
+            return year + '-' + String(month + 1).padStart(2, '0');
         }
-        updateLabels();
 
-        var isLocked = false;
-        var allMonths = {};
+        // Build month selector: all 12 months of current year
+        function buildMonthSelector() {
+            var container = document.getElementById('monthSelector');
+            var html = '';
+            for (var m = 0; m < 12; m++) {
+                var key = buildMonthKey(currentYear, m);
+                var lang = getLang();
+                var label = monthNames[lang][m];
+                var hasData = allMonths[key] && allMonths[key] > 0;
+                var isSelected = key === selectedMonthKey;
+                html += '<button class="month-chip' +
+                    (isSelected ? ' selected' : '') +
+                    (hasData ? ' has-data' : '') +
+                    '" onclick="selectMonth(\'' + key + '\')">' +
+                    label +
+                    (hasData ? ' ✓' : '') +
+                    '</button>';
+            }
+            container.innerHTML = '<div class="year-label">' + currentYear + '</div>' +
+                '<div class="month-chips">' + html + '</div>' +
+                '<div class="year-nav">' +
+                    '<button class="btn-nav" onclick="changeYear(-1)">◄ ' + (currentYear - 1) + '</button>' +
+                    '<button class="btn-nav" onclick="changeYear(1)">' + (currentYear + 1) + ' ►</button>' +
+                '</div>';
+        }
 
-        // Load data from server
-        function loadData() {
-            fetch(API_BASE + '/api/get-revenue')
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    allMonths = data.months || {};
-                    var existing = allMonths[lastMonthKey];
-                    if (existing && existing > 0) {
-                        lockField(existing);
-                    }
-                    renderHistory();
-                })
-                .catch(function(err) {
-                    showStatus('خطأ في تحميل البيانات', true);
-                    console.error(err);
-                });
+        function selectMonth(key) {
+            selectedMonthKey = key;
+            var existing = allMonths[key];
+            var input = document.getElementById('amountInput');
+            if (existing && existing > 0) {
+                input.value = existing;
+            } else {
+                input.value = '';
+            }
+            buildMonthSelector();
+            input.focus();
+        }
+
+        function changeYear(delta) {
+            currentYear += delta;
+            selectedMonthKey = '';
+            buildMonthSelector();
         }
 
         function confirmRevenue() {
-            var input = document.getElementById('lastMonthAmount');
+            if (!selectedMonthKey) {
+                var lang = getLang();
+                showStatus(lang === 'ar' ? 'اختر شهر أولاً' : 'Select a month first', true);
+                return;
+            }
+
+            var input = document.getElementById('amountInput');
             var amount = parseFloat(input.value);
-            if (isNaN(amount) || amount <= 0) return;
+            if (isNaN(amount) || amount < 0) return;
 
             var lang = getLang();
-            var msg = lang === 'ar'
-                ? 'متأكد من هذا الرقم؟\n' + formatNumber(amount) + ' ريال'
-                : 'Are you sure?\n' + formatNumber(amount) + ' SAR';
+            var action = amount === 0
+                ? (lang === 'ar' ? 'حذف إيرادات ' : 'Delete revenue for ')
+                : (lang === 'ar' ? 'تأكيد إيرادات ' : 'Confirm revenue for ');
+            var msg = action + getMonthLabel(selectedMonthKey) + '\n' + formatNumber(amount) + (lang === 'ar' ? ' ريال' : ' SAR');
 
             if (!confirm(msg)) return;
 
-            // Send to server
             fetch(API_BASE + '/api/set-revenue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ monthKey: lastMonthKey, amount: amount })
+                body: JSON.stringify({ monthKey: selectedMonthKey, amount: amount })
             })
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.success) {
                     allMonths = data.months || {};
-                    lockField(amount);
+                    buildMonthSelector();
                     renderHistory();
                     showStatus(lang === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully', false);
                 } else {
@@ -128,43 +148,33 @@
             });
         }
 
-        function lockField(amount) {
-            isLocked = true;
-            document.getElementById('lastMonthInputRow').classList.add('hidden');
-            var lockedEl = document.getElementById('lastMonthLocked');
-            lockedEl.classList.remove('hidden');
-            document.getElementById('lastMonthLockedValue').textContent = formatNumber(amount) + ' SAR';
-        }
-
-        function unlockField() {
-            isLocked = false;
-            document.getElementById('lastMonthInputRow').classList.remove('hidden');
-            document.getElementById('lastMonthLocked').classList.add('hidden');
-            var existing = allMonths[lastMonthKey];
-            if (existing) {
-                document.getElementById('lastMonthAmount').value = existing;
-            }
-        }
-
         function renderHistory() {
             var container = document.getElementById('monthsList');
             var keys = Object.keys(allMonths).sort().reverse();
 
             if (keys.length === 0) {
                 var lang = getLang();
-                container.innerHTML = '<p class="empty-msg" data-ar="لا توجد بيانات" data-en="No data">' +
+                container.innerHTML = '<p class="empty-msg">' +
                     (lang === 'ar' ? 'لا توجد بيانات' : 'No data') + '</p>';
                 return;
             }
 
-            container.innerHTML = keys.map(function(key) {
+            var total = 0;
+            var html = keys.map(function(key) {
                 var amount = allMonths[key];
-                var isCurrent = key === lastMonthKey;
-                return '<div class="history-row' + (isCurrent ? ' current' : '') + '">' +
+                total += amount;
+                return '<div class="history-row" onclick="selectMonth(\'' + key + '\')">' +
                     '<span class="history-month">' + getMonthLabel(key) + '</span>' +
                     '<span class="history-amount">' + formatNumber(amount) + ' SAR</span>' +
                 '</div>';
             }).join('');
+
+            html = '<div class="history-total">' +
+                '<span>' + (getLang() === 'ar' ? 'الإجمالي' : 'Total') + '</span>' +
+                '<span>' + formatNumber(total) + ' SAR</span>' +
+            '</div>' + html;
+
+            container.innerHTML = html;
         }
 
         function showStatus(msg, isError) {
@@ -175,12 +185,25 @@
             setTimeout(function() { el.classList.add('hidden'); }, 3000);
         }
 
-        // Enter key support
-        document.getElementById('lastMonthAmount').addEventListener('keydown', function(e) {
+        // Enter key
+        document.getElementById('amountInput').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') { e.preventDefault(); confirmRevenue(); }
         });
 
-        loadData();
+        // Load data
+        fetch(API_BASE + '/api/get-revenue')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                allMonths = data.months || {};
+                buildMonthSelector();
+                renderHistory();
+            })
+            .catch(function(err) {
+                showStatus('خطأ في تحميل البيانات', true);
+                console.error(err);
+            });
+
+        buildMonthSelector();
     </script>
 </body>
 </html>
