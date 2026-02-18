@@ -851,6 +851,18 @@ body {
     border-color: rgba(251, 191, 36, 0.3);
 }
 
+.expense-month-display {
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent-red);
+    margin-bottom: 12px;
+    padding: 10px;
+    background: var(--accent-red-dim);
+    border-radius: 10px;
+    border: 1px solid var(--accent-red-glow);
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .header-inner { height: 64px; }

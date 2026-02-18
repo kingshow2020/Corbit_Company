@@ -49,6 +49,25 @@
 
             <!-- Status -->
             <div class="admin-status hidden" id="statusMsg"></div>
+
+            <!-- Expenses Section -->
+            <div class="admin-divider"></div>
+            <h2 class="section-label" data-ar="مصروفات الشهر" data-en="Monthly Expenses" style="margin-bottom:12px"></h2>
+            <p class="admin-note" data-ar="أدخل مصروفات الشهر الحالي (مرة واحدة بالشهر)" data-en="Enter this month's expenses (once per month)"></p>
+
+            <div class="expense-month-display" id="expMonthLabel"></div>
+
+            <div class="input-row" style="margin-bottom:12px">
+                <input type="number" id="expenseInput" placeholder="المصروفات" step="0.01" min="0">
+                <button class="btn btn-primary btn-sm" id="expenseBtn" onclick="submitExpense()">
+                    <span data-ar="حفظ" data-en="Save"></span>
+                </button>
+            </div>
+
+            <!-- Expenses History -->
+            <div class="months-list" id="expensesList"></div>
+
+            <div class="admin-status hidden" id="expenseStatus"></div>
         </div>
     </main>
 
@@ -338,12 +357,177 @@
             if (e.key === 'Enter') { e.preventDefault(); submitDaily(); }
         });
 
+        // === EXPENSES SECTION ===
+        var allExpenses = {};
+
+        function getCurrentMonthKey() {
+            var now = getSaudiNow();
+            return now.getUTCFullYear() + '-' + String(now.getUTCMonth() + 1).padStart(2, '0');
+        }
+
+        function getMonthLabel(key) {
+            var parts = key.split('-');
+            var m = parseInt(parts[1]) - 1;
+            var y = parseInt(parts[0]);
+            var lang = getLang();
+            return monthNames[lang][m] + ' ' + y;
+        }
+
+        function updateExpenseUI() {
+            var lang = getLang();
+            var currentKey = getCurrentMonthKey();
+
+            // Show current month name
+            var monthLabel = document.getElementById('expMonthLabel');
+            if (monthLabel) {
+                monthLabel.textContent = getMonthLabel(currentKey);
+            }
+
+            // Pre-fill if exists
+            var input = document.getElementById('expenseInput');
+            if (allExpenses[currentKey]) {
+                input.value = allExpenses[currentKey];
+                document.getElementById('expenseBtn').querySelector('span').textContent =
+                    lang === 'ar' ? 'تعديل' : 'Update';
+            } else {
+                input.value = '';
+                document.getElementById('expenseBtn').querySelector('span').textContent =
+                    lang === 'ar' ? 'حفظ' : 'Save';
+            }
+
+            renderExpensesHistory();
+        }
+
+        function submitExpense() {
+            var input = document.getElementById('expenseInput');
+            var amount = parseFloat(input.value);
+            if (isNaN(amount) || amount < 0) {
+                showExpenseStatus(getLang() === 'ar' ? 'أدخل مبلغ صحيح' : 'Enter valid amount', true);
+                return;
+            }
+
+            var currentKey = getCurrentMonthKey();
+            var lang = getLang();
+
+            fetch(API_BASE + '/api/set-expenses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ monthKey: currentKey, amount: amount })
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    allExpenses = data.expenses || {};
+                    showExpenseStatus(
+                        lang === 'ar' ? 'تم حفظ مصروفات ' + getMonthLabel(currentKey)
+                            : 'Saved expenses for ' + getMonthLabel(currentKey),
+                        false
+                    );
+                    updateExpenseUI();
+                } else {
+                    showExpenseStatus(lang === 'ar' ? 'خطأ في الحفظ' : 'Save error', true);
+                }
+            })
+            .catch(function(err) {
+                showExpenseStatus(lang === 'ar' ? 'خطأ في الاتصال' : 'Connection error', true);
+                console.error(err);
+            });
+        }
+
+        function renderExpensesHistory() {
+            var container = document.getElementById('expensesList');
+            if (!container) return;
+
+            var lang = getLang();
+            var keys = Object.keys(allExpenses).sort().reverse();
+
+            if (keys.length === 0) {
+                container.innerHTML = '<p class="empty-msg">' +
+                    (lang === 'ar' ? 'لا توجد مصروفات مسجلة' : 'No expenses recorded') + '</p>';
+                return;
+            }
+
+            var total = 0;
+            var html = keys.map(function(key) {
+                var amount = allExpenses[key];
+                total += amount;
+                return '<div class="history-row" onclick="selectExpenseMonth(\'' + key + '\')">' +
+                    '<span class="history-month">' + getMonthLabel(key) + '</span>' +
+                    '<span class="history-amount" style="color:var(--accent-red)">' + formatNumber(amount) + ' SAR</span>' +
+                '</div>';
+            }).join('');
+
+            html = '<div class="history-total history-total-exp">' +
+                '<span>' + (lang === 'ar' ? 'الإجمالي' : 'Total') + '</span>' +
+                '<span>' + formatNumber(total) + ' SAR</span>' +
+            '</div>' + html;
+
+            container.innerHTML = html;
+        }
+
+        function selectExpenseMonth(key) {
+            var input = document.getElementById('expenseInput');
+            if (allExpenses[key]) {
+                input.value = allExpenses[key];
+            } else {
+                input.value = '';
+            }
+
+            var monthLabel = document.getElementById('expMonthLabel');
+            if (monthLabel) {
+                monthLabel.textContent = getMonthLabel(key);
+            }
+
+            // Temporarily override the submit to save to this month
+            document.getElementById('expenseBtn').onclick = function() {
+                var amount = parseFloat(input.value);
+                if (isNaN(amount) || amount < 0) return;
+                var lang = getLang();
+
+                fetch(API_BASE + '/api/set-expenses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monthKey: key, amount: amount })
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.success) {
+                        allExpenses = data.expenses || {};
+                        showExpenseStatus(
+                            lang === 'ar' ? 'تم حفظ مصروفات ' + getMonthLabel(key)
+                                : 'Saved expenses for ' + getMonthLabel(key),
+                            false
+                        );
+                        // Reset to current month
+                        document.getElementById('expenseBtn').onclick = submitExpense;
+                        updateExpenseUI();
+                    }
+                });
+            };
+
+            input.focus();
+        }
+
+        function showExpenseStatus(msg, isError) {
+            var el = document.getElementById('expenseStatus');
+            el.textContent = msg;
+            el.className = 'admin-status ' + (isError ? 'status-error' : 'status-success');
+            el.classList.remove('hidden');
+            setTimeout(function() { el.classList.add('hidden'); }, 3000);
+        }
+
+        document.getElementById('expenseInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); submitExpense(); }
+        });
+
         // Load data
         fetch(API_BASE + '/api/get-revenue')
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 allDays = data.days || {};
+                allExpenses = data.expenses || {};
                 updateUI();
+                updateExpenseUI();
             })
             .catch(function(err) {
                 showStatus('خطأ في تحميل البيانات', true);

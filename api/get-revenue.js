@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const MONTHLY_EXPENSES = 1080000;
+const DEFAULT_MONTHLY_EXPENSES = 1080000;
 
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
@@ -25,10 +25,11 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Read both daily and monthly data
+    // Read daily, monthly revenue, and monthly expenses data
     const dailyData = await redis.get('corbitt_daily') || {};
     const monthlyData = await redis.get('corbitt_revenue');
     const months = (monthlyData && monthlyData.months) ? monthlyData.months : {};
+    const expensesData = await redis.get('corbitt_expenses') || {};
 
     // Saudi Arabia timezone (UTC+3)
     const utcNow = new Date();
@@ -44,14 +45,18 @@ module.exports = async function handler(req, res) {
     const secondsToday = (hours * 3600) + (minutes * 60) + seconds;
     const secondsInMonth = ((day - 1) * 86400) + secondsToday;
 
-    // === EXPENSES (auto - 1,080,000/month) — always the same ===
-    const expPerSecond = MONTHLY_EXPENSES / (daysInMonth * 86400);
+    // === EXPENSES (manual per month from Redis, fallback to default) ===
+    const currentMonthKey = year + '-' + String(month + 1).padStart(2, '0');
+    const currentExpenses = expensesData[currentMonthKey] || DEFAULT_MONTHLY_EXPENSES;
+
+    const expPerSecond = currentExpenses / (daysInMonth * 86400);
     const expensesToday = expPerSecond * secondsToday;
     const expensesMonth = expPerSecond * secondsInMonth;
 
     let expensesYear = 0;
     for (let m = 0; m < month; m++) {
-      expensesYear += MONTHLY_EXPENSES;
+      const mKey = year + '-' + String(m + 1).padStart(2, '0');
+      expensesYear += (expensesData[mKey] || DEFAULT_MONTHLY_EXPENSES);
     }
     expensesYear += expensesMonth;
 
@@ -170,6 +175,9 @@ module.exports = async function handler(req, res) {
 
       // For admin page (daily entries)
       days: dailyData,
+
+      // For admin page (monthly expenses)
+      expenses: expensesData,
 
       // For backward compatibility (monthly entries)
       months: months
